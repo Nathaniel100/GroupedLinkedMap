@@ -1,0 +1,4 @@
+
+add_executable(GroupedLinkedMapTest groupedlinkedmap_test.cpp catch.hpp)
+target_link_libraries(GroupedLinkedMapTest GroupedLinkedMap)
+add_test(GroupedLinkedMapTest GroupedLinkedMapTest)
