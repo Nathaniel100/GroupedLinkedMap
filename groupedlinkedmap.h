@@ -5,14 +5,16 @@
 #ifndef GROUPEDLINKEDMAP_GROUPEDLINKEDMAP_H
 #define GROUPEDLINKEDMAP_GROUPEDLINKEDMAP_H
 
+//
 // GroupedLinkedMap实现了LRU功能, 基于Glide库中GroupedLinkedMap实现
 // 支持Get, Put, RemoteLast操作
 // GroupedLinkedMap<Int, String> m;
 // m.put(1, "a");
 // m.put(2, "b");
 // m.put(1, "c");
-// auto s = m.get(1)
-// auto s2 = m.get(2)
+// auto s = m.get(1) /* 从map中移除key=1对应的value， s == "c" */
+// auto s2 = m.get(2) /* 从map中移除key=1对应的value， s2 == "b" */
+//
 
 #include <vector>
 #include <unordered_map>
@@ -21,7 +23,7 @@ namespace glm {
 
 namespace internal {
 
-// 循环链表节点
+// 循环链表节点, K和V 必须满足Movable, Copyable特性
 template<class K, class V>
 class LinkedEntry {
  public:
@@ -33,21 +35,28 @@ class LinkedEntry {
   }
 
   V RemoveLast() {
+    if (Size() == 0) {
+      throw std::out_of_range("No values");
+    }
     V t = values_.back();
     values_.pop_back();
     return t;
   }
 
-  size_t size() const {
+  size_t Size() const {
     return values_.size();
   }
 
- public:
+  const K &Key() const {
+    return key;
+  }
+
+ private:
   K key;
+  std::vector<V> values_;
+ public:
   LinkedEntry<K, V> *prev; // 不需要释放
   LinkedEntry<K, V> *next; // 不需要释放
- private:
-  std::vector<V> values_;
 };
 
 }
@@ -70,7 +79,13 @@ class GroupedLinkedMap {
     DeleteEntry(head_);
   }
 
-  // TODO Copy & Move
+  // Copy is not allowed
+  GroupedLinkedMap(const GroupedLinkedMap &) = delete;
+  GroupedLinkedMap &operator=(const GroupedLinkedMap &) = delete;
+
+  // Move is not allowed
+  GroupedLinkedMap(GroupedLinkedMap &&) = delete;
+  GroupedLinkedMap &operator=(GroupedLinkedMap &&) = delete;
 
   void Put(K key, V value) {
     Entry *entry = nullptr;
@@ -84,7 +99,42 @@ class GroupedLinkedMap {
     entry->Add(value);
   }
 
+  V Get(const K &key) {
+    if (entries_.count(key) == 0) {
+      throw std::out_of_range("No such key");
+    }
+    Entry *entry = entries_[key];
+    MakeHead(entry);
+    return RemoveLastAndDeleteEntryIfNecessary(entry);
+  }
+
+  V RemoveLast() {
+    if (IsEmpty()) {
+      throw std::out_of_range("Map is empty");
+    }
+    Entry *entry = head_->prev;
+    return RemoveLastAndDeleteEntryIfNecessary(entry);
+  }
+
+  bool IsEmpty() const {
+    return head_ == head_->prev;
+  }
+
+  bool Contains(const K &key) const {
+    return entries_.count(key) != 0;
+  }
+
  private:
+  V RemoveLastAndDeleteEntryIfNecessary(Entry *entry) {
+    V v = entry->RemoveLast();
+    if (entry->Size() == 0) {
+      entries_.erase(entry->Key());
+      RemoveEntry(entry);
+      DeleteEntry(entry);
+    }
+    return v;
+  }
+
   void RemoveEntry(Entry *entry) {
     entry->prev->next = entry->next;
     entry->next->prev = entry->prev;
